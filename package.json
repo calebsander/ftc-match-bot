@@ -1,0 +1,20 @@
+{
+	"name": "ftc-match-bot",
+	"version": "1.0.0",
+	"description": "Runs a Twilio SMS bot to send FTC match results",
+	"main": "index.js",
+	"dependencies": {
+		"@types/node": "^9.4.6",
+		"@types/node-fetch": "^1.6.7",
+		"html-soup": "^2.0.0",
+		"node-fetch": "^1.7.3",
+		"twilio": "^3.13.0",
+		"typescript": "^2.7.2"
+	},
+	"scripts": {
+		"build": "tsc",
+		"test": "echo \"Error: no test specified\" && exit 1"
+	},
+	"author": "Caleb Sander",
+	"license": "MIT"
+}
