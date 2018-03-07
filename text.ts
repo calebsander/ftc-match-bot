@@ -31,7 +31,7 @@ const TEAM_NUMBER = /(\d{1,5})/ //matches team numbers in SMS requests
 const STOP = 'done' //matches unsubscribe request in SMS requests
 const STOP_MATCH = new RegExp(STOP, 'i')
 const HELP = /\?/i //matches help request in SMS requests
-const END = ' -The GearTicks' //appended to every sent message
+const END = ' Good luck! -The GearTicks' //appended to every sent message
 const RANK = 'rank' //matches rankings request in SMS requests
 const RANKING = new RegExp(RANK, 'i')
 const RANK_TEXT = ' Text "' + RANK + '" for rankings.'
@@ -311,7 +311,7 @@ function requestRanking(teamNumber: string, res: http.ServerResponse) {
 			})
 	))
 		.then(divisionResponses => {
-			res.end('(QP, RP, Matches)\n' + divisionResponses.join('\n\n') + END)
+			res.end('(QP, RP, Matches)\n' + divisionResponses.join('\n\n') + '\n' + END.trim()) //place end text on next line
 			console.log('Responded with rank')
 		})
 		.catch(errorRespond(res))
