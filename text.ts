@@ -13,13 +13,15 @@ import {Alliance, TeamMatch} from './types'
 //Constants to configure
 const PORT = 6055 //port the server will run on; make Twilio SMS webhook to this port
 const NUMBER = '+13236886055' //number to send match results from
-const MATCH_RESULTS_URLS = [ //list of match results URLs for each division (look like .../cache/MatchResults_[competition]_[division].html)
-	'http://scoring.ftceast.org/cache/MatchResults_East_Super-Regional_Hopper.html',
-	'http://scoring.ftceast.org/cache/MatchResults_East_Super-Regional_Tesla.html'
+const MATCH_RESULTS_URLS = [ //list of match details URLs for each division (look like .../cache/MatchResultsDetails_[competition]_[division].html)
+	'http://scoring.ftceast.org/cache/MatchResultsDetails_East_Super-Regional_Hopper.html',
+	'http://scoring.ftceast.org/cache/MatchResultsDetails_East_Super-Regional_Tesla.html',
+	'http://scoring.ftceast.org/cache/MatchResultsDetails_East_Super-Regional_Finals.html'
 ]
 const RANKING_URLS: {[division: string]: string} = { //mapping of division names to rankings URLS (look like .../cache/Rankings_[competition]_[division].html)
-	Hopper: 'https://calebsander.com/uploads/1483107180/ranking_hopper_test.html', //'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Hopper.html',
-	//Tesla: 'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Tesla.html'
+	Test: 'https://calebsander.com/uploads/1483107180/ranking_hopper_test.html',
+	Hopper: 'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Hopper.html',
+	Tesla: 'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Tesla.html'
 }
 const MATCH_CHECK_INTERVAL = 30e3 //number of ms to wait between checking for new match data
 
@@ -169,28 +171,17 @@ function fetchMatches(): Promise<void> {
 			.then(body => {
 				const dom = htmlSoup.parse(body)
 				const rows = [...htmlSoup.select(dom, 'tr')]
-				for (let i = 0; i < rows.length; i++) {
-					const row = rows[i]
-					if (!(
-						(row.child as HtmlTag).type === 'td' && //skip header rows
-						row.children.length === 4 //skip second (or third) rows for each match
-					)) continue
-					const scoreCell = (row.children[1] as HtmlTag).child
+				for (const row of rows) {
+					if (htmlSoup.select(row, 'th').size) continue //skip header rows
+					const scoreCell = (row.children[1] as HtmlTag).child as TextNode | undefined
 					if (!scoreCell) continue //skip unreported scores; check that this is correct
-					const [score, won] = (scoreCell as TextNode).text.split(' ')
-					const match = ((row.child as HtmlTag).child as TextNode).text
+					const [score, won] = scoreCell.text.split(' ')
+					const match = ((row.children[0] as HtmlTag).child as TextNode).text.replace(/^Q-/, '')
 					const matchId = String(urlIndex) + ' ' + match //include urlIndex to distinguish same match number in different divisions
-					const nextRow = rows[i + 1] //second teams on each alliance stored on next row
 					recordMatch(matchId, {
 						match, score, won,
-						redTeams: [
-							((row.children[2] as HtmlTag).child as TextNode).text,
-							((nextRow.child as HtmlTag).child as TextNode).text
-						],
-						blueTeams: [
-							((row.children[3] as HtmlTag).child as TextNode).text,
-							((nextRow.children[1] as HtmlTag).child as TextNode).text
-						]
+						redTeams: ((row.children[2] as HtmlTag).child as TextNode).text.split(' ') as Alliance,
+						blueTeams: ((row.children[3] as HtmlTag).child as TextNode).text.split(' ') as Alliance
 					})
 				}
 			})
@@ -239,6 +230,7 @@ function requestMatches(team: string, from: string, res: http.ServerResponse) {
 	readFile(MATCHES_DIR + team + '.json', 'utf8')
 		.then(matchData => {
 			const matches = JSON.parse(matchData).matches as TeamMatch[]
+			deregister(from) //don't send match results when fetching new ones
 			return fetchMatches()
 				.then(() => {
 					const responseLines: string[] = []
@@ -260,7 +252,6 @@ function requestMatches(team: string, from: string, res: http.ServerResponse) {
 						const result = matchResults[matchIndex]
 						responseLines.push(result.match + ' (' + matchResultCharacter(result, team) + ' ' + result.score + ')')
 					}
-					deregister(from)
 					//Must add numbers after fetching matches to avoid sending notifications for newly recorded matches
 					if (!registeredNumbers[team]) registeredNumbers[team] = []
 					registeredNumbers[team].push(from) //subscribe to team's matches
