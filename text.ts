@@ -19,7 +19,6 @@ const MATCH_RESULTS_URLS = [ //list of match details URLs for each division (loo
 	'http://scoring.ftceast.org/cache/MatchResultsDetails_East_Super-Regional_Finals.html'
 ]
 const RANKING_URLS: {[division: string]: string} = { //mapping of division names to rankings URLS (look like .../cache/Rankings_[competition]_[division].html)
-	Test: 'https://calebsander.com/uploads/1483107180/ranking_hopper_test.html',
 	Hopper: 'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Hopper.html',
 	Tesla: 'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Tesla.html'
 }
