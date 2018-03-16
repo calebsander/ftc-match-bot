@@ -5,6 +5,7 @@ import {HtmlTag, TextNode} from 'html-soup/dist/parse'
 import fetch from 'node-fetch'
 import {Alliance, TeamMatch} from './types'
 
+const MATCHES_DIR = 'matches'
 const MATCH_LIST_URLS = [
 	'http://scoring.ftceast.org/cache/Matches_East_Super-Regional_Hopper.html',
 	'http://scoring.ftceast.org/cache/Matches_East_Super-Regional_Tesla.html'
@@ -20,7 +21,7 @@ interface TeamMatches {
 }
 
 Promise.all([
-	promisify(fs.mkdir)('matches')
+	promisify(fs.mkdir)(MATCHES_DIR)
 		.catch(_ => {}), //not a problem if it already exists
 	Promise.all(MATCH_LIST_URLS.map(url =>
 		fetch(url)
@@ -34,8 +35,8 @@ Promise.all([
 					const children = row.children as HtmlTag[]
 					matches.push({
 						number: (children[0].child as TextNode).text,
-						redTeams: [1, 2].map(i => (children[i].child as TextNode).text) as [string, string],
-						blueTeams: [3, 4].map(i => (children[i].child as TextNode).text) as [string, string]
+						redTeams: [2, 3].map(i => (children[i].child as TextNode).text) as [string, string],
+						blueTeams: [4, 5].map(i => (children[i].child as TextNode).text) as [string, string]
 					})
 				}
 				return matches
@@ -66,8 +67,9 @@ Promise.all([
 			if (matchCount === undefined) matchCount = teamMatches.length
 			else if (teamMatches.length !== matchCount) throw new Error('Unequal match counts')
 			writePromises.push(promisify(fs.writeFile)(
-				'matches/' + team + '.json',
+				MATCHES_DIR + '/' + team + '.json',
 				JSON.stringify({matches: teamMatches})
 			))
 		}
+		return Promise.all(writePromises)
 	})

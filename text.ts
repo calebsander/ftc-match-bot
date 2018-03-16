@@ -173,7 +173,7 @@ function fetchMatches(): Promise<void> {
 				for (const row of rows) {
 					if (htmlSoup.select(row, 'th').size) continue //skip header rows
 					const scoreCell = (row.children[1] as HtmlTag).child as TextNode | undefined
-					if (!scoreCell) continue //skip unreported scores; check that this is correct
+					if (!scoreCell) continue //skip unreported scores
 					const [score, won] = scoreCell.text.split(' ')
 					const match = ((row.children[0] as HtmlTag).child as TextNode).text.replace(/^Q-/, '')
 					const matchId = String(urlIndex) + ' ' + match //include urlIndex to distinguish same match number in different divisions
