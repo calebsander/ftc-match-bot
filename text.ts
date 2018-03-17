@@ -28,7 +28,7 @@ const REGISTERED_NUMBERS = './registered-numbers.json' //stores subscribers for 
 const ACCOUNT_FILE = './twilio-account.json' //stores Twilio authentication data (required)
 const MATCH_SCORES = './recorded-matches.json' //stores seen match results (will be created if nonexistant)
 const MATCHES_DIR = './matches/' //stores teams' matches in MATCHES_DIR/[team number].json
-const TEAM_NUMBER = /(\d{1,5})/ //matches team numbers in SMS requests
+const TEAM_NUMBER = /(\d+)/ //matches team numbers in SMS requests
 const STOP = 'done' //matches unsubscribe request in SMS requests
 const STOP_MATCH = new RegExp(STOP, 'i')
 const HELP = /\?/i //matches help request in SMS requests
@@ -226,6 +226,7 @@ function getResult(match: MatchData): typeof TIE | typeof RED_WIN | typeof BLUE_
  * @param res The response object corresponding to the request
  */
 function requestMatches(team: string, from: string, res: http.ServerResponse) {
+	team = String(Number(team)) //remove leading zeros
 	readFile(MATCHES_DIR + team + '.json', 'utf8')
 		.then(matchData => {
 			const matches = JSON.parse(matchData).matches as TeamMatch[]
