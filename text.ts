@@ -37,7 +37,7 @@ const RANK = 'rank' //matches rankings request in SMS requests
 const RANKING = new RegExp(RANK, 'i')
 const RANK_TEXT = ' Text "' + RANK + '" for rankings.'
 const HELP_TEXT = 'Text "' + STOP + '" to disable.' + RANK_TEXT + END
-const TIE_CHARACTER = '☯', LOSS_CHARACTER = '❌', WIN_CHARACTER = '✔️' //characters to send to represent match results
+const TIE_CHARACTER = 'T', LOSS_CHARACTER = 'L', WIN_CHARACTER = 'W' //characters to send to represent match results
 const BLUE_CHARACTER = 'B', RED_CHARACTER = 'R' //characters to send to represent alliance colors
 
 interface TwilioAccountData {
