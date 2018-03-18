@@ -169,7 +169,7 @@ function fetchMatches(): Promise<void> {
 			.then(res => res.text())
 			.then(body => {
 				const dom = htmlSoup.parse(body)
-				const rows = [...htmlSoup.select(dom, 'tr')]
+				const rows = htmlSoup.select(dom, 'tr')
 				for (const row of rows) {
 					if (htmlSoup.select(row, 'th').size) continue //skip header rows
 					const scoreCell = (row.children[1] as HtmlTag).child as TextNode | undefined
