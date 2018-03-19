@@ -35,8 +35,10 @@ Promise.all([
 					const children = row.children as HtmlTag[]
 					matches.push({
 						number: (children[0].child as TextNode).text,
-						redTeams: [2, 3].map(i => (children[i].child as TextNode).text) as [string, string],
-						blueTeams: [4, 5].map(i => (children[i].child as TextNode).text) as [string, string]
+						//Some matches lists have columns Number, Field, Red 1, Red 2, Blue 1, Blue 2
+						//while others have no Field column, so we count columns from the right instead of the left
+						redTeams: [-4, -3].map(i => (children.slice(i)[0].child as TextNode).text) as [string, string],
+						blueTeams: [-2, -1].map(i => (children.slice(i)[0].child as TextNode).text) as [string, string]
 					})
 				}
 				return matches
