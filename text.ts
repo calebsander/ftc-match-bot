@@ -12,15 +12,15 @@ import {Alliance, TeamMatch} from './types'
 
 //Constants to configure
 const PORT = 6055 //port the server will run on; make Twilio SMS webhook to this port
-const NUMBER = '+13236886055' //number to send match results from
+const NUMBER = '+14159696055' //number to send match results from
 const MATCH_RESULTS_URLS = [ //list of match details URLs for each division (look like .../cache/MatchResultsDetails_[competition]_[division].html)
-	'http://scoring.ftceast.org/cache/MatchResultsDetails_East_Super-Regional_Hopper.html',
-	'http://scoring.ftceast.org/cache/MatchResultsDetails_East_Super-Regional_Tesla.html',
-	'http://scoring.ftceast.org/cache/MatchResultsDetails_East_Super-Regional_Finals.html'
+	'http://detroit.worlds.pennfirst.org/cache/MatchResultsDetails_2018_World_Championship_Edison.html',
+	'http://detroit.worlds.pennfirst.org/cache/MatchResultsDetails_2018_World_Championship_Ochoa.html',
+	//'http://detroit.worlds.pennfirst.org/cache/MatchResultsDetails_2018_World_Championship_Finals.html' - not sure why this is not yet populated
 ]
 const RANKING_URLS: {[division: string]: string} = { //mapping of division names to rankings URLS (look like .../cache/Rankings_[competition]_[division].html)
-	Hopper: 'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Hopper.html',
-	Tesla: 'http://scoring.ftceast.org/cache/Rankings_East_Super-Regional_Tesla.html'
+	Edison: 'http://detroit.worlds.pennfirst.org/cache/Rankings_2018_World_Championship_Edison.html',
+	Ochoa: 'http://detroit.worlds.pennfirst.org/cache/Rankings_2018_World_Championship_Ochoa.html'
 }
 const MATCH_CHECK_INTERVAL = 30e3 //number of ms to wait between checking for new match data
 

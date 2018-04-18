@@ -7,8 +7,8 @@ import {Alliance, TeamMatch} from './types'
 
 const MATCHES_DIR = 'matches'
 const MATCH_LIST_URLS = [
-	'http://scoring.ftceast.org/cache/Matches_East_Super-Regional_Hopper.html',
-	'http://scoring.ftceast.org/cache/Matches_East_Super-Regional_Tesla.html'
+	'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Edison.html',
+	'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Ochoa.html'
 ]
 
 interface Match {
