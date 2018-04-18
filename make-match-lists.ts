@@ -3,13 +3,13 @@ import {promisify} from 'util'
 import * as htmlSoup from 'html-soup'
 import {HtmlTag, TextNode} from 'html-soup/dist/parse'
 import fetch from 'node-fetch'
-import {Alliance, TeamMatch} from './types'
+import {Alliance, MatchFile, TeamMatch, URLs} from './types'
 
 const MATCHES_DIR = 'matches'
-const MATCH_LIST_URLS = [
-	'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Edison.html',
-	'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Ochoa.html'
-]
+const MATCH_LIST_URLS: URLs = {
+	Edison: 'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Edison.html',
+	Ochoa: 'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Ochoa.html'
+}
 
 interface Match {
 	number: string
@@ -23,8 +23,8 @@ interface TeamMatches {
 Promise.all([
 	promisify(fs.mkdir)(MATCHES_DIR)
 		.catch(_ => {}), //not a problem if it already exists
-	Promise.all(MATCH_LIST_URLS.map(url =>
-		fetch(url)
+	Promise.all(Object.keys(MATCH_LIST_URLS).map(division =>
+		fetch(MATCH_LIST_URLS[division])
 			.then(res => res.text())
 			.then(body => {
 				const dom = htmlSoup.parse(body)
@@ -41,15 +41,17 @@ Promise.all([
 						blueTeams: [-2, -1].map(i => (children.slice(i)[0].child as TextNode).text) as [string, string]
 					})
 				}
-				return matches
+				return {division, matches}
 			})
 	))
 ])
 	.then(([_, divisionMatches]) => {
+		const teamsDivisions: {[team: string]: string} = {}
 		const teamsMatches: TeamMatches = {}
-		for (const matches of divisionMatches) {
+		for (const {division, matches} of divisionMatches) {
 			for (const {number, redTeams, blueTeams} of matches) {
 				for (const team of redTeams.concat(blueTeams)) {
+					teamsDivisions[team] = division
 					const onRed = redTeams.includes(team)
 					let teamMatches = teamsMatches[team]
 					if (!teamMatches) teamsMatches[team] = teamMatches = []
@@ -63,15 +65,16 @@ Promise.all([
 			}
 		}
 		let matchCount: number | undefined
-		const writePromises: Promise<void>[] = []
-		for (const team in teamsMatches) {
+		return Promise.all(Object.keys(teamsMatches).map(team => {
 			const teamMatches = teamsMatches[team]
 			if (matchCount === undefined) matchCount = teamMatches.length
 			else if (teamMatches.length !== matchCount) throw new Error('Unequal match counts')
-			writePromises.push(promisify(fs.writeFile)(
+			return promisify(fs.writeFile)(
 				MATCHES_DIR + '/' + team + '.json',
-				JSON.stringify({matches: teamMatches})
-			))
-		}
-		return Promise.all(writePromises)
+				JSON.stringify({
+					division: teamsDivisions[team],
+					matches: teamMatches
+				} as MatchFile)
+			)
+		}))
 	})

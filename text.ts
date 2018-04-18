@@ -8,7 +8,7 @@ import * as htmlSoup from 'html-soup'
 import {TextNode, HtmlTag} from 'html-soup/dist/parse'
 import fetch from 'node-fetch'
 import * as twilio from 'twilio'
-import {Alliance, TeamMatch} from './types'
+import {Alliance, MatchFile, URLs} from './types'
 
 //Constants to configure
 const PORT = 6055 //port the server will run on; make Twilio SMS webhook to this port
@@ -18,7 +18,7 @@ const MATCH_RESULTS_URLS = [ //list of match details URLs for each division (loo
 	'http://detroit.worlds.pennfirst.org/cache/MatchResultsDetails_2018_World_Championship_Ochoa.html',
 	//'http://detroit.worlds.pennfirst.org/cache/MatchResultsDetails_2018_World_Championship_Finals.html' - not sure why this is not yet populated
 ]
-const RANKING_URLS: {[division: string]: string} = { //mapping of division names to rankings URLS (look like .../cache/Rankings_[competition]_[division].html)
+const RANKING_URLS: URLs = { //mapping of division names to rankings URLS (look like .../cache/Rankings_[competition]_[division].html)
 	Edison: 'http://detroit.worlds.pennfirst.org/cache/Rankings_2018_World_Championship_Edison.html',
 	Ochoa: 'http://detroit.worlds.pennfirst.org/cache/Rankings_2018_World_Championship_Ochoa.html'
 }
@@ -220,6 +220,14 @@ function getResult(match: MatchData): typeof TIE | typeof RED_WIN | typeof BLUE_
 	return match.won === 'R' ? RED_WIN : BLUE_WIN
 }
 /**
+ * Reads (scheduled) matches file for a given team
+ * @param team The team number
+ */
+function readMatchFile(team: string): Promise<MatchFile> {
+	return readFile(MATCHES_DIR + team + '.json', 'utf8')
+		.then(JSON.parse)
+}
+/**
  * Handler for incoming SMS containing team number
  * @param team The team number
  * @param from The phone number of the sender
@@ -227,44 +235,42 @@ function getResult(match: MatchData): typeof TIE | typeof RED_WIN | typeof BLUE_
  */
 function requestMatches(team: string, from: string, res: http.ServerResponse) {
 	team = String(Number(team)) //remove leading zeros
-	readFile(MATCHES_DIR + team + '.json', 'utf8')
-		.then(matchData => {
-			const matches = JSON.parse(matchData).matches as TeamMatch[]
-			deregister(from) //don't send match results when fetching new ones
-			return fetchMatches()
-				.then(() => {
-					const responseLines: string[] = []
-					const matchResults = getResultsForTeam(team)
-					for (let matchIndex = 0; matchIndex < matches.length; matchIndex++) {
-						const {match, color, partner, opponents} = matches[matchIndex]
-						let matchResponse = String(match)
-							+ (color === 'blue' ? BLUE_CHARACTER : color === 'red' ? RED_CHARACTER : '')
-							+ ' w/ ' + partner
-							+ ' v. ' + opponents.join(' & ')
-						if (matchIndex < matchResults.length) { //match result known
-							const result = matchResults[matchIndex]
-							matchResponse += ' (' + matchResultCharacter(result, team) + ' ' + result.score + ')'
-						}
-						responseLines.push(matchResponse)
-					}
-					//Add post-qualification matches
-					for (let matchIndex = matches.length; matchIndex < matchResults.length; matchIndex++) {
+	readMatchFile(team).then(({matches}) => {
+		deregister(from) //don't send match results when fetching new ones
+		return fetchMatches()
+			.then(() => {
+				const responseLines: string[] = []
+				const matchResults = getResultsForTeam(team)
+				for (let matchIndex = 0; matchIndex < matches.length; matchIndex++) {
+					const {match, color, partner, opponents} = matches[matchIndex]
+					let matchResponse = String(match)
+						+ (color === 'blue' ? BLUE_CHARACTER : color === 'red' ? RED_CHARACTER : '')
+						+ ' w/ ' + partner
+						+ ' v. ' + opponents.join(' & ')
+					if (matchIndex < matchResults.length) { //match result known
 						const result = matchResults[matchIndex]
-						responseLines.push(result.match + ' (' + matchResultCharacter(result, team) + ' ' + result.score + ')')
+						matchResponse += ' (' + matchResultCharacter(result, team) + ' ' + result.score + ')'
 					}
-					//Must add numbers after fetching matches to avoid sending notifications for newly recorded matches
-					if (!registeredNumbers[team]) registeredNumbers[team] = []
-					registeredNumbers[team].push(from) //subscribe to team's matches
-					responseLines.push('You will now be texted when team ' + team + "'s scores are announced. " + HELP_TEXT)
-					return saveRegistered()
-						.then(() => {
-							res.end(responseLines.join('\n'))
-							console.log('Responded')
-						})
-				})
-				.catch(errorRespond(res))
-		})
-		.catch(() => res.end('Team ' + team + ' does not exist'))
+					responseLines.push(matchResponse)
+				}
+				//Add post-qualification matches
+				for (let matchIndex = matches.length; matchIndex < matchResults.length; matchIndex++) {
+					const result = matchResults[matchIndex]
+					responseLines.push(result.match + ' (' + matchResultCharacter(result, team) + ' ' + result.score + ')')
+				}
+				//Must add numbers after fetching matches to avoid sending notifications for newly recorded matches
+				if (!registeredNumbers[team]) registeredNumbers[team] = []
+				registeredNumbers[team].push(from) //subscribe to team's matches
+				responseLines.push('You will now be texted when team ' + team + "'s scores are announced. " + HELP_TEXT)
+				return saveRegistered()
+					.then(() => {
+						res.end(responseLines.join('\n'))
+						console.log('Responded')
+					})
+			})
+			.catch(errorRespond(res))
+	})
+	.catch(() => res.end('Team ' + team + ' does not exist'))
 }
 /**
  * Gets team a given phone number is subscribed to
@@ -282,25 +288,35 @@ function getTeam(textNumber: string): string {
  * @param res The response object corresponding to the request
  */
 function requestRanking(teamNumber: string, res: http.ServerResponse) {
-	Promise.all(Object.keys(RANKING_URLS).map(division =>
-		fetch(RANKING_URLS[division])
-			.then(res => res.text())
-			.then(body => {
-				const dom = htmlSoup.parse(body)
-				const rows = htmlSoup.select(dom, 'tr')
-				let divisionResponse = division
-				for (const row of rows) {
-					if (htmlSoup.select(row, 'th').size) continue //skip header row
-					const [rank, team, QP, RP, matches] = [0, 1, 3, 4, 6].map(col =>
-						((row.children[col] as HtmlTag).child as TextNode).text
-					)
-					if (Number(rank) > 10 && team !== teamNumber) continue //show first 10 teams and subscriber's team
-					divisionResponse += '\n' + rank + '. ' + team
-						+ ' (' + QP + ', ' + RP + ', ' + matches + ')'
-				}
-				return divisionResponse
-			})
-	))
+	const getDivision: Promise<string | null> = teamNumber
+		? readMatchFile(teamNumber).then(({division}) => division)
+		: Promise.resolve(null)
+	return getDivision
+		.then(teamDivision =>
+			Object.keys(RANKING_URLS)
+				.filter(division => !teamDivision || division === teamDivision) //send rankings for team's division, or all divisions if subscriber is not on team
+		)
+		.then(divisions =>
+			Promise.all(divisions.map(division =>
+				fetch(RANKING_URLS[division])
+					.then(res => res.text())
+					.then(body => {
+						const dom = htmlSoup.parse(body)
+						const rows = htmlSoup.select(dom, 'tr')
+						let divisionResponse = division
+						for (const row of rows) {
+							if (htmlSoup.select(row, 'th').size) continue //skip header row
+							const [rank, team, QP, RP, matches] = [0, 1, 3, 4, 6].map(col =>
+								((row.children[col] as HtmlTag).child as TextNode).text
+							)
+							if (Number(rank) > 10 && team !== teamNumber) continue //show first 10 teams and subscriber's team
+							divisionResponse += '\n' + rank + '. ' + team
+								+ ' (' + QP + ', ' + RP + ', ' + matches + ')'
+						}
+						return divisionResponse
+					})
+			))
+		)
 		.then(divisionResponses => {
 			res.end('(QP, RP, Matches)\n' + divisionResponses.join('\n\n') + '\n' + END.trim()) //place end text on next line
 			console.log('Responded with rank')

@@ -5,3 +5,11 @@ export interface TeamMatch {
 	partner: string
 	opponents: Alliance
 }
+export interface MatchFile {
+	division: string
+	matches: TeamMatch[]
+}
+
+export interface URLs {
+	[division: string]: string
+}
