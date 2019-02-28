@@ -31,7 +31,7 @@ const MATCHES_DIR = './matches/' //stores teams' matches in MATCHES_DIR/[team nu
 const TEAM_NUMBER = /(\d+)/ //matches team numbers in SMS requests
 const STOP = 'done' //matches unsubscribe request in SMS requests
 const STOP_MATCH = new RegExp(STOP + '|stop', 'i') //catch "STOP" command too
-const HELP = /\?/i //matches help request in SMS requests
+const HELP = /\?/ //matches help request in SMS requests
 const END = ' Good luck! -The GearTicks' //appended to every sent message
 const RANK = 'rank' //matches rankings request in SMS requests
 const RANKING = new RegExp(RANK, 'i')
@@ -117,7 +117,7 @@ function sendMessage(number: string, message: string): void {
 		from: NUMBER,
 		body: message
 	})
-		.then(() => console.log('Sent message to', number + ': "' + message + '"'))
+		.then(_ => console.log('Sent message to', number + ': "' + message + '"'))
 		.catch(console.error)
 }
 /**
@@ -138,11 +138,14 @@ function reportNewMatch(matchData: MatchData): void {
 				break
 			case WIN_CHARACTER:
 				response = 'WON'
+				break
+			default:
+				throw new Error('Unexpected match character: ' + resultCharacter)
 		}
-		response! += ' match ' + matchData.match
+		response += ' match ' + matchData.match
 			+ ' (' + matchData.score + '). '
 			+ RANK_TEXT + END
-		for (const number of registeredNumbers[team] || []) sendMessage(number, response!) //send message to all subscribers
+		for (const number of registeredNumbers[team] || []) sendMessage(number, response) //send message to all subscribers
 	}
 }
 /**
@@ -185,7 +188,7 @@ function fetchMatches(): Promise<void> {
 				}
 			})
 	))
-		.then(() => writeFile(MATCH_SCORES, JSON.stringify(recordedMatches)))
+		.then(_ => writeFile(MATCH_SCORES, JSON.stringify(recordedMatches)))
 }
 /**
  * Selects recorded match results involving a given team
@@ -238,7 +241,7 @@ function requestMatches(team: string, from: string, res: http.ServerResponse) {
 	readMatchFile(team).then(({matches}) => {
 		deregister(from) //don't send match results when fetching new ones
 		return fetchMatches()
-			.then(() => {
+			.then(_ => {
 				const responseLines: string[] = []
 				const matchResults = getResultsForTeam(team)
 				for (let matchIndex = 0; matchIndex < matches.length; matchIndex++) {
@@ -263,14 +266,14 @@ function requestMatches(team: string, from: string, res: http.ServerResponse) {
 				registeredNumbers[team].push(from) //subscribe to team's matches
 				responseLines.push('You will now be texted when team ' + team + "'s scores are announced. " + HELP_TEXT)
 				return saveRegistered()
-					.then(() => {
+					.then(_ => {
 						res.end(responseLines.join('\n'))
 						console.log('Responded')
 					})
 			})
 			.catch(errorRespond(res))
 	})
-	.catch(() => res.end('Team ' + team + ' does not exist'))
+	.catch(_ => res.end('Team ' + team + ' does not exist'))
 }
 /**
  * Gets team a given phone number is subscribed to
@@ -351,7 +354,7 @@ function httpRespond(req: http.IncomingMessage, res: http.ServerResponse) {
 				else if (STOP_MATCH.test(body)) {
 					deregister(from)
 					saveRegistered()
-						.then(() => res.end('Unsubscribed'))
+						.then(_ => res.end('Unsubscribed'))
 						.catch(errorRespond(res))
 				}
 				else if (HELP.test(body)) res.end(HELP_TEXT)
@@ -380,7 +383,7 @@ Promise.all([
 	})
 
 //Check for new matches periodically
-setInterval(() =>
+setInterval(_ =>
 	fetchMatches().catch(console.error),
 	MATCH_CHECK_INTERVAL
 )
