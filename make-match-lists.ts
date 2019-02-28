@@ -7,8 +7,8 @@ import {Alliance, MatchFile, TeamMatch, URLs} from './types'
 
 const MATCHES_DIR = 'matches'
 const MATCH_LIST_URLS: URLs = {
-	Edison: 'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Edison.html',
-	Ochoa: 'http://detroit.worlds.pennfirst.org/cache/Matches_2018_World_Championship_Ochoa.html'
+	Allegheny: 'http://scoring.ftcpenn.org/cache/Matches_championship_1.html',
+	Pocono: 'http://scoring.ftcpenn.org/cache/Matches_championship_2.html'
 }
 
 interface Match {
