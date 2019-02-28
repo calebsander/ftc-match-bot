@@ -4,12 +4,14 @@
 	"description": "Runs a Twilio SMS bot to send FTC match results",
 	"main": "index.js",
 	"dependencies": {
-		"@types/node": "^9.4.6",
-		"@types/node-fetch": "^1.6.7",
 		"html-soup": "^2.0.0",
-		"node-fetch": "^1.7.3",
-		"twilio": "^3.13.0",
-		"typescript": "^2.7.2"
+		"node-fetch": "^2.3.0",
+		"twilio": "^3.28.1"
+	},
+	"devDependencies": {
+		"@types/node": "^11.9.6",
+		"@types/node-fetch": "^2.1.6",
+		"typescript": "^3.3.3333"
 	},
 	"scripts": {
 		"build": "tsc",
