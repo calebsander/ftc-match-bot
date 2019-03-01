@@ -30,13 +30,13 @@ const MATCH_SCORES = './recorded-matches.json' //stores seen match results (will
 const MATCHES_DIR = './matches/' //stores teams' matches in MATCHES_DIR/[team number].json
 const TEAM_NUMBER = /(\d+)/ //matches team numbers in SMS requests
 const STOP = 'done' //matches unsubscribe request in SMS requests
-const STOP_MATCH = new RegExp(STOP + '|stop', 'i') //catch "STOP" command too
+const STOP_MATCH = new RegExp(`${STOP}|stop`, 'i') //catch "STOP" command too
 const HELP = /\?/ //matches help request in SMS requests
-const END = ' Good luck! -The GearTicks' //appended to every sent message
+const END = 'Good luck! -The GearTicks' //appended to every sent message
 const RANK = 'rank' //matches rankings request in SMS requests
 const RANKING = new RegExp(RANK, 'i')
-const RANK_TEXT = ' Text "' + RANK + '" for rankings.'
-const HELP_TEXT = 'Text "' + STOP + '" to disable.' + RANK_TEXT + END
+const RANK_TEXT = ` Text "${RANK}" for rankings. ${END}`
+const HELP_TEXT = `Text "${STOP}" to disable.${RANK_TEXT}`
 const TIE_CHARACTER = 'T', LOSS_CHARACTER = 'L', WIN_CHARACTER = 'W' //characters to send to represent match results
 const BLUE_CHARACTER = 'B', RED_CHARACTER = 'R' //characters to send to represent alliance colors
 
@@ -117,7 +117,7 @@ function sendMessage(number: string, message: string): void {
 		from: NUMBER,
 		body: message
 	})
-		.then(_ => console.log('Sent message to', number + ': "' + message + '"'))
+		.then(_ => console.log(`Sent message to ${number}: "${message}"`))
 		.catch(console.error)
 }
 /**
@@ -140,11 +140,9 @@ function reportNewMatch(matchData: MatchData): void {
 				response = 'WON'
 				break
 			default:
-				throw new Error('Unexpected match character: ' + resultCharacter)
+				throw new Error(`Unexpected match character: ${resultCharacter}`)
 		}
-		response += ' match ' + matchData.match
-			+ ' (' + matchData.score + '). '
-			+ RANK_TEXT + END
+		response += ` match ${matchData.match} (${matchData.score}).${RANK_TEXT}`
 		for (const number of registeredNumbers[team] || []) sendMessage(number, response) //send message to all subscribers
 	}
 }
@@ -179,12 +177,11 @@ function fetchMatches(): Promise<void> {
 					if (!scoreCell) continue //skip unreported scores
 					const [score, won] = scoreCell.text.split(' ')
 					const match = ((row.children[0] as HtmlTag).child as TextNode).text.replace(/^Q-/, '')
-					const matchId = String(urlIndex) + ' ' + match //include urlIndex to distinguish same match number in different divisions
-					recordMatch(matchId, {
-						match, score, won,
-						redTeams: ((row.children[2] as HtmlTag).child as TextNode).text.split(' ') as Alliance,
-						blueTeams: ((row.children[3] as HtmlTag).child as TextNode).text.split(' ') as Alliance
-					})
+					const matchId = `${urlIndex} ${match}` //include urlIndex to distinguish same match number in different divisions
+					const [redTeams, blueTeams] = [2, 3].map(col =>
+						((row.children[col] as HtmlTag).child as TextNode).text.split(' ') as Alliance
+					)
+					recordMatch(matchId, {match, score, won, redTeams, blueTeams})
 				}
 			})
 	))
@@ -227,7 +224,7 @@ function getResult(match: MatchData): typeof TIE | typeof RED_WIN | typeof BLUE_
  * @param team The team number
  */
 function readMatchFile(team: string): Promise<MatchFile> {
-	return readFile(MATCHES_DIR + team + '.json', 'utf8')
+	return readFile(`${MATCHES_DIR}${team}.json`, 'utf8')
 		.then(JSON.parse)
 }
 /**
@@ -246,25 +243,26 @@ function requestMatches(team: string, from: string, res: http.ServerResponse) {
 				const matchResults = getResultsForTeam(team)
 				for (let matchIndex = 0; matchIndex < matches.length; matchIndex++) {
 					const {match, color, partner, opponents} = matches[matchIndex]
-					let matchResponse = String(match)
-						+ (color === 'blue' ? BLUE_CHARACTER : color === 'red' ? RED_CHARACTER : '')
-						+ ' w/ ' + partner
-						+ ' v. ' + opponents.join(' & ')
+					const colorCharacter =
+						color === 'blue' ? BLUE_CHARACTER :
+						color === 'red' ? RED_CHARACTER : ''
+					let matchResponse = `${match}${colorCharacter} w/ ${partner} v. ${opponents.join(' & ')}`
 					if (matchIndex < matchResults.length) { //match result known
 						const result = matchResults[matchIndex]
-						matchResponse += ' (' + matchResultCharacter(result, team) + ' ' + result.score + ')'
+						matchResponse += ` (${matchResultCharacter(result, team)} ${result.score})`
 					}
 					responseLines.push(matchResponse)
 				}
 				//Add post-qualification matches
 				for (let matchIndex = matches.length; matchIndex < matchResults.length; matchIndex++) {
+					//TODO: write a function to handle both types of matches
 					const result = matchResults[matchIndex]
-					responseLines.push(result.match + ' (' + matchResultCharacter(result, team) + ' ' + result.score + ')')
+					responseLines.push(`${result.match} (${matchResultCharacter(result, team)} ${result.score})`)
 				}
 				//Must add numbers after fetching matches to avoid sending notifications for newly recorded matches
 				if (!registeredNumbers[team]) registeredNumbers[team] = []
 				registeredNumbers[team].push(from) //subscribe to team's matches
-				responseLines.push('You will now be texted when team ' + team + "'s scores are announced. " + HELP_TEXT)
+				responseLines.push(`You will now be texted when team ${team}'s scores are announced. ${HELP_TEXT}`)
 				return saveRegistered()
 					.then(_ => {
 						res.end(responseLines.join('\n'))
@@ -273,7 +271,7 @@ function requestMatches(team: string, from: string, res: http.ServerResponse) {
 			})
 			.catch(errorRespond(res))
 	})
-	.catch(_ => res.end('Team ' + team + ' does not exist'))
+	.catch(_ => res.end(`Team ${team} does not exist`))
 }
 /**
  * Gets team a given phone number is subscribed to
@@ -313,15 +311,14 @@ function requestRanking(teamNumber: string, res: http.ServerResponse) {
 								((row.children[col] as HtmlTag).child as TextNode).text
 							)
 							if (Number(rank) > 10 && team !== teamNumber) continue //show first 10 teams and subscriber's team
-							divisionResponse += '\n' + rank + '. ' + team
-								+ ' (' + QP + ', ' + RP + ', ' + matches + ')'
+							divisionResponse += `\n${rank}. ${team} (${QP}, ${RP}, ${matches})`
 						}
 						return divisionResponse
 					})
 			))
 		)
 		.then(divisionResponses => {
-			res.end('(QP, RP, Matches)\n' + divisionResponses.join('\n\n') + '\n' + END.trim()) //place end text on next line
+			res.end(`(QP, RP, Matches)\n${divisionResponses.join('\n\n')}\n${END}`)
 			console.log('Responded with rank')
 		})
 		.catch(errorRespond(res))
@@ -359,7 +356,7 @@ function httpRespond(req: http.IncomingMessage, res: http.ServerResponse) {
 				}
 				else if (HELP.test(body)) res.end(HELP_TEXT)
 				else if (teamMatch = TEAM_NUMBER.exec(body)) requestMatches(teamMatch[1], from, res)
-				else res.end('Please enter a team number. ' + HELP_TEXT)
+				else res.end(`Please enter a team number. ${HELP_TEXT}`)
 			}
 			catch (e) { errorRespond(res)(e) }
 		})
