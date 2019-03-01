@@ -305,13 +305,15 @@ function requestRanking(teamNumber: string, res: http.ServerResponse) {
 						const dom = htmlSoup.parse(body)
 						const rows = htmlSoup.select(dom, 'tr')
 						let divisionResponse = division
+						let teamsListed = 0
 						for (const row of rows) {
 							if (htmlSoup.select(row, 'th').size) continue //skip header row
 							const [rank, team, QP, RP, matches] = [0, 1, 3, 4, 6].map(col =>
 								((row.children[col] as HtmlTag).child as TextNode).text
 							)
-							if (Number(rank) > 10 && team !== teamNumber) continue //show first 10 teams and subscriber's team
+							if (teamsListed >= 10 && team !== teamNumber) continue //show first 10 teams and subscriber's team
 							divisionResponse += `\n${rank}. ${team} (${QP}, ${RP}, ${matches})`
+							teamsListed++
 						}
 						return divisionResponse
 					})
