@@ -179,7 +179,9 @@ function fetchMatches(): Promise<void> {
 					const match = ((row.children[0] as HtmlTag).child as TextNode).text.replace(/^Q-/, '')
 					const matchId = `${urlIndex} ${match}` //include urlIndex to distinguish same match number in different divisions
 					const [redTeams, blueTeams] = [2, 3].map(col =>
-						((row.children[col] as HtmlTag).child as TextNode).text.split(' ') as Alliance
+						((row.children[col] as HtmlTag).child as TextNode).text
+							.split(' ')
+							.map(team => team.replace('*', '')) as Alliance
 					)
 					recordMatch(matchId, {match, score, won, redTeams, blueTeams})
 				}
