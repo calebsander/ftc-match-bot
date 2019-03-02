@@ -1,5 +1,6 @@
 import * as fs from 'fs'
 import {promisify} from 'util'
+const writeFile = promisify(fs.writeFile)
 import * as htmlSoup from 'html-soup'
 import {HtmlTag, TextNode} from 'html-soup/dist/parse'
 import fetch from 'node-fetch'
@@ -31,14 +32,15 @@ Promise.all([
 				for (const row of rows) {
 					if (htmlSoup.select(row, 'th').size) continue //ignore header row
 					const children = row.children as HtmlTag[]
-					const getChildText = (i: number) =>
+					const getTeam = (i: number) =>
 						(children.slice(i)[0].child as TextNode).text
+							.replace('*', '') //remove * from team number for surrogate matches
 					matches.push({
-						number: getChildText(0),
+						number: (children[0].child as TextNode).text,
 						//Some matches lists have columns Number, Field, Red 1, Red 2, Blue 1, Blue 2
 						//while others have no Field column, so we count columns from the right instead of the left
-						redTeams: [-4, -3].map(getChildText) as Alliance,
-						blueTeams: [-2, -1].map(getChildText) as Alliance
+						redTeams: [-4, -3].map(getTeam) as Alliance,
+						blueTeams: [-2, -1].map(getTeam) as Alliance
 					})
 				}
 				return {division, matches}
@@ -66,17 +68,24 @@ Promise.all([
 				}
 			}
 		}
-		let matchCount: number | undefined
-		return Promise.all(Object.keys(teamsMatches).map(team => {
-			const teamMatches = teamsMatches[team]
-			if (matchCount === undefined) matchCount = teamMatches.length
-			else if (teamMatches.length !== matchCount) throw new Error('Unequal match counts')
-			return promisify(fs.writeFile)(
-				MATCHES_DIR + '/' + team + '.json',
-				JSON.stringify({
-					division: teamsDivisions[team],
-					matches: teamMatches
-				} as MatchFile)
-			)
-		}))
+		const matchCountTeams = new Map<number, string[]>()
+		const writePromises: Promise<void>[] = []
+		for (const team in teamsMatches) {
+			const matches = teamsMatches[team]
+			const matchCount = matches.length
+			let teamsWithMatchCount = matchCountTeams.get(matchCount)
+			if (!teamsWithMatchCount) {
+				matchCountTeams.set(matchCount, teamsWithMatchCount = [])
+			}
+			teamsWithMatchCount.push(team)
+			const teamData: MatchFile = {division: teamsDivisions[team], matches}
+			writePromises.push(writeFile(
+				`${MATCHES_DIR}/${team}.json`,
+				JSON.stringify(teamData)
+			))
+		}
+		if (matchCountTeams.size > 1) {
+			console.error('Unequal match counts:', matchCountTeams)
+		}
+		return Promise.all(writePromises)
 	})
