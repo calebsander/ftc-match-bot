@@ -8,7 +8,7 @@ import * as htmlSoup from 'html-soup'
 import {TextNode, HtmlTag} from 'html-soup/dist/parse'
 import fetch from 'node-fetch'
 import * as twilio from 'twilio'
-import {Alliance, MatchFile, URLs} from './types'
+import {Alliance, MatchFile, TeamMatch, URLs} from './types'
 
 //Constants to configure
 const PORT = 6055 //port the server will run on; make Twilio SMS webhook to this port
@@ -100,11 +100,9 @@ function saveRegistered(): Promise<void> {
  * Use this anywhere where an error might be thrown while responding to SMS.
  * @param res The response object corresponding to the incoming SMS message
  */
-function errorRespond(res: http.ServerResponse): (err: Error) => void {
-	return (err: Error) => {
-		console.error(err)
-		res.end('Error occurred')
-	}
+function errorRespond(res: http.ServerResponse, err: Error): void {
+	console.error(err)
+	res.end('Error occurred')
 }
 /**
  * Sends an SMS that is not a response to an incoming SMS;
@@ -112,14 +110,16 @@ function errorRespond(res: http.ServerResponse): (err: Error) => void {
  * @param number Phone number to send to
  * @param message Message to send
  */
-function sendMessage(number: string, message: string): void {
-	twilioInstance.messages.create({
-		to: number,
-		from: NUMBER,
-		body: message
-	})
-		.then(_ => console.log(`Sent message to ${number}: "${message}"`))
-		.catch(console.error)
+async function sendMessage(number: string, message: string): Promise<void> {
+	try {
+		await twilioInstance.messages.create({
+			to: number,
+			from: NUMBER,
+			body: message
+		})
+		console.log(`Sent message to ${number}: "${message}"`)
+	}
+	catch (e) { console.error(e) }
 }
 /**
  * Texts to all subscribers to participants in a given match its result;
@@ -165,30 +165,29 @@ function recordMatch(id: string, matchData: MatchData): void {
  * adding them to `recordedMatches`
  * and saving `recordedMatches` to file
 */
-function fetchMatches(): Promise<void> {
-	return Promise.all(MATCH_RESULTS_URLS.map((url, urlIndex) =>
-		fetch(url)
-			.then(res => res.text())
-			.then(body => {
-				const dom = htmlSoup.parse(body)
-				const rows = htmlSoup.select(dom, 'tr')
-				for (const row of rows) {
-					if (htmlSoup.select(row, 'th').size) continue //skip header rows
-					const scoreCell = (row.children[1] as HtmlTag).child as TextNode | undefined
-					if (!scoreCell) continue //skip unreported scores
-					const [score, won] = scoreCell.text.split(' ')
-					const match = ((row.children[0] as HtmlTag).child as TextNode).text.replace(/^Q-/, '')
-					const matchId = `${urlIndex} ${match}` //include urlIndex to distinguish same match number in different divisions
-					const [redTeams, blueTeams] = [2, 3].map(col =>
-						((row.children[col] as HtmlTag).child as TextNode).text
-							.split(' ')
-							.map(team => team.replace('*', '')) as Alliance
-					)
-					recordMatch(matchId, {match, score, won, redTeams, blueTeams})
-				}
-			})
-	))
-		.then(_ => writeFile(MATCH_SCORES, JSON.stringify(recordedMatches)))
+async function fetchMatches(): Promise<void> {
+	await Promise.all(MATCH_RESULTS_URLS.map(async (url, urlIndex) => {
+		const res = await fetch(url)
+		const body = await res.text()
+		const dom = htmlSoup.parse(body)
+		const rows = htmlSoup.select(dom, 'tr')
+		for (const row of rows) {
+			if (htmlSoup.select(row, 'th').size) continue //skip header rows
+			const scoreCell = (row.children[1] as HtmlTag).child as TextNode | undefined
+			if (!scoreCell) continue //skip unreported scores
+
+			const [score, won] = scoreCell.text.split(' ')
+			const match = ((row.children[0] as HtmlTag).child as TextNode).text.replace(/^Q-/, '')
+			const matchId = `${urlIndex} ${match}` //include urlIndex to distinguish same match number in different divisions
+			const [redTeams, blueTeams] = [2, 3].map(col =>
+				((row.children[col] as HtmlTag).child as TextNode).text
+					.split(' ')
+					.map(team => team.replace('*', '')) as Alliance
+			)
+			recordMatch(matchId, {match, score, won, redTeams, blueTeams})
+		}
+	}))
+	await writeFile(MATCH_SCORES, JSON.stringify(recordedMatches))
 }
 /**
  * Selects recorded match results involving a given team
@@ -226,9 +225,9 @@ function getResult(match: MatchData): typeof TIE | typeof RED_WIN | typeof BLUE_
  * Reads (scheduled) matches file for a given team
  * @param team The team number
  */
-function readMatchFile(team: string): Promise<MatchFile> {
-	return readFile(`${MATCHES_DIR}${team}.json`, 'utf8')
-		.then(JSON.parse)
+async function readMatchFile(team: string): Promise<MatchFile> {
+	const matches = await readFile(`${MATCHES_DIR}${team}.json`, 'utf8')
+	return JSON.parse(matches)
 }
 /**
  * Handler for incoming SMS containing team number
@@ -236,45 +235,44 @@ function readMatchFile(team: string): Promise<MatchFile> {
  * @param from The phone number of the sender
  * @param res The response object corresponding to the request
  */
-function requestMatches(team: string, from: string, res: http.ServerResponse) {
+async function requestMatches(team: string, from: string, res: http.ServerResponse): Promise<void> {
 	team = String(Number(team)) //remove leading zeros
-	readMatchFile(team).then(({matches}) => {
-		deregister(from) //don't send match results when fetching new ones
-		return fetchMatches()
-			.then(_ => {
-				const responseLines: string[] = []
-				const matchResults = getResultsForTeam(team)
-				for (let matchIndex = 0; matchIndex < matches.length; matchIndex++) {
-					const {match, color, partner, opponents} = matches[matchIndex]
-					const colorCharacter =
-						color === 'blue' ? BLUE_CHARACTER :
-						color === 'red' ? RED_CHARACTER : ''
-					let matchResponse = `${match}${colorCharacter} w/ ${partner} v. ${opponents.join(' & ')}`
-					if (matchIndex < matchResults.length) { //match result known
-						const result = matchResults[matchIndex]
-						matchResponse += ` (${matchResultCharacter(result, team)} ${result.score})`
-					}
-					responseLines.push(matchResponse)
-				}
-				//Add post-qualification matches
-				for (let matchIndex = matches.length; matchIndex < matchResults.length; matchIndex++) {
-					//TODO: write a function to handle both types of matches
-					const result = matchResults[matchIndex]
-					responseLines.push(`${result.match} (${matchResultCharacter(result, team)} ${result.score})`)
-				}
-				//Must add numbers after fetching matches to avoid sending notifications for newly recorded matches
-				if (!registeredNumbers[team]) registeredNumbers[team] = []
-				registeredNumbers[team].push(from) //subscribe to team's matches
-				responseLines.push(`You will now be texted when team ${team}'s scores are announced. ${HELP_TEXT}`)
-				return saveRegistered()
-					.then(_ => {
-						res.end(responseLines.join('\n'))
-						console.log('Responded')
-					})
-			})
-			.catch(errorRespond(res))
-	})
-	.catch(_ => res.end(`Team ${team} does not exist`))
+	let matches: TeamMatch[]
+	try { ({matches} = await readMatchFile(team)) }
+	catch {
+		res.end(`Team ${team} does not exist`)
+		return
+	}
+
+	deregister(from) //don't send match results when fetching new ones
+	await fetchMatches()
+	const responseLines: string[] = []
+	const matchResults = getResultsForTeam(team)
+	for (let matchIndex = 0; matchIndex < matches.length; matchIndex++) {
+		const {match, color, partner, opponents} = matches[matchIndex]
+		const colorCharacter =
+			color === 'blue' ? BLUE_CHARACTER :
+			color === 'red' ? RED_CHARACTER : ''
+		let matchResponse = `${match}${colorCharacter} w/ ${partner} v. ${opponents.join(' & ')}`
+		if (matchIndex < matchResults.length) { //match result known
+			const result = matchResults[matchIndex]
+			matchResponse += ` (${matchResultCharacter(result, team)} ${result.score})`
+		}
+		responseLines.push(matchResponse)
+	}
+	//Add post-qualification matches
+	for (let matchIndex = matches.length; matchIndex < matchResults.length; matchIndex++) {
+		//TODO: write a function to handle both types of matches
+		const result = matchResults[matchIndex]
+		responseLines.push(`${result.match} (${matchResultCharacter(result, team)} ${result.score})`)
+	}
+	//Must add numbers after fetching matches to avoid sending notifications for newly recorded matches
+	if (!registeredNumbers[team]) registeredNumbers[team] = []
+	registeredNumbers[team].push(from) //subscribe to team's matches
+	responseLines.push(`You will now be texted when team ${team}'s scores are announced. ${HELP_TEXT}`)
+	await saveRegistered()
+	res.end(responseLines.join('\n'))
+	console.log('Responded')
 }
 /**
  * Gets team a given phone number is subscribed to
@@ -291,42 +289,38 @@ function getTeam(textNumber: string): string {
  * @param teamNumber The team number of the subscriber
  * @param res The response object corresponding to the request
  */
-function requestRanking(teamNumber: string, res: http.ServerResponse) {
-	const getDivision: Promise<string | null> = teamNumber
-		? readMatchFile(teamNumber).then(({division}) => division)
-		: Promise.resolve(null)
-	return getDivision
-		.then(teamDivision =>
-			Object.keys(RANKING_URLS)
-				.filter(division => !teamDivision || division === teamDivision) //send rankings for team's division, or all divisions if subscriber is not on team
-		)
-		.then(divisions =>
-			Promise.all(divisions.map(division =>
-				fetch(RANKING_URLS[division])
-					.then(res => res.text())
-					.then(body => {
-						const dom = htmlSoup.parse(body)
-						const rows = htmlSoup.select(dom, 'tr')
-						let divisionResponse = division
-						let teamsListed = 0
-						for (const row of rows) {
-							if (htmlSoup.select(row, 'th').size) continue //skip header row
-							const [rank, team, QP, RP, matches] = [0, 1, 3, 4, 6].map(col =>
-								((row.children[col] as HtmlTag).child as TextNode).text
-							)
-							if (teamsListed >= 10 && team !== teamNumber) continue //show first 10 teams and subscriber's team
-							divisionResponse += `\n${rank}. ${team} (${QP}, ${RP}, ${matches})`
-							teamsListed++
-						}
-						return divisionResponse
-					})
-			))
-		)
-		.then(divisionResponses => {
-			res.end(`(QP, RP, Matches)\n${divisionResponses.join('\n\n')}\n${END}`)
-			console.log('Responded with rank')
-		})
-		.catch(errorRespond(res))
+async function requestRanking(teamNumber: string, res: http.ServerResponse): Promise<void> {
+	let teamDivision: string | null
+	if (teamNumber) {
+		const team = await readMatchFile(teamNumber)
+		teamDivision = team.division
+	}
+	else teamDivision = null
+	const divisionsToSend = Object.keys(RANKING_URLS)
+		//send rankings for team's division, or all divisions if subscriber is not on team
+		.filter(division => !teamDivision || division === teamDivision)
+	const divisionResponses = await Promise.all(divisionsToSend.map(async division => {
+		const res = await fetch(RANKING_URLS[division])
+		const body = await res.text()
+		const dom = htmlSoup.parse(body)
+		const rows = htmlSoup.select(dom, 'tr')
+		let divisionResponse = division
+		let teamsListed = 0
+		for (const row of rows) {
+			if (htmlSoup.select(row, 'th').size) continue //skip header row
+
+			const [rank, team, QP, RP, matches] = [0, 1, 3, 4, 6].map(col =>
+				((row.children[col] as HtmlTag).child as TextNode).text
+			)
+			if (teamsListed >= 10 && team !== teamNumber) continue //show first 10 teams and subscriber's team
+
+			divisionResponse += `\n${rank}. ${team} (${QP}, ${RP}, ${matches})`
+			teamsListed++
+		}
+		return divisionResponse
+	}))
+	res.end(`(QP, RP, Matches)\n${divisionResponses.join('\n\n')}\n${END}`)
+	console.log('Responded with rank')
 }
 
 /**
@@ -343,7 +337,7 @@ function httpRespond(req: http.IncomingMessage, res: http.ServerResponse) {
 			chunks.push(chunk)
 			reqLength += chunk.length
 		})
-		.on('end', () => {
+		.on('end', async () => {
 			try {
 				const request = querystring.parse(Buffer.concat(chunks).toString()) as TwilioRequest
 				console.log(`${new Date} ${JSON.stringify(request)}`)
@@ -353,18 +347,19 @@ function httpRespond(req: http.IncomingMessage, res: http.ServerResponse) {
 				console.log('SMS:', body)
 				let teamMatch: RegExpExecArray | null
 				if (TWILIO_STOP_MATCH.test(body)) res.end()
-				else if (RANKING.test(body)) requestRanking(getTeam(from), res)
+				else if (RANKING.test(body)) await requestRanking(getTeam(from), res)
 				else if (STOP_MATCH.test(body)) {
 					deregister(from)
-					saveRegistered()
-						.then(_ => res.end('Unsubscribed'))
-						.catch(errorRespond(res))
+					await saveRegistered()
+					res.end('Unsubscribed')
 				}
 				else if (HELP.test(body)) res.end(HELP_TEXT)
-				else if (teamMatch = TEAM_NUMBER.exec(body)) requestMatches(teamMatch[1], from, res)
+				else if (teamMatch = TEAM_NUMBER.exec(body)) {
+					await requestMatches(teamMatch[1], from, res)
+				}
 				else res.end(`Please enter a team number. ${HELP_TEXT}`)
 			}
-			catch (e) { errorRespond(res)(e) }
+			catch (e) { errorRespond(res, e) }
 		})
 }
 
