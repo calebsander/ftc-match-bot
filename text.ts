@@ -30,7 +30,8 @@ const MATCH_SCORES = './recorded-matches.json' //stores seen match results (will
 const MATCHES_DIR = './matches/' //stores teams' matches in MATCHES_DIR/[team number].json
 const TEAM_NUMBER = /(\d+)/ //matches team numbers in SMS requests
 const STOP = 'done' //matches unsubscribe request in SMS requests
-const STOP_MATCH = new RegExp(`${STOP}|stop`, 'i') //catch "STOP" command too
+const STOP_MATCH = new RegExp(STOP, 'i')
+const TWILIO_STOP_MATCH = /stop/i //client will not accept SMS messages
 const HELP = /\?/ //matches help request in SMS requests
 const END = 'Good luck! -The GearTicks' //appended to every sent message
 const RANK = 'rank' //matches rankings request in SMS requests
@@ -351,7 +352,8 @@ function httpRespond(req: http.IncomingMessage, res: http.ServerResponse) {
 				const {Body: body, From: from} = request
 				console.log('SMS:', body)
 				let teamMatch: RegExpExecArray | null
-				if (RANKING.test(body)) requestRanking(getTeam(from), res)
+				if (TWILIO_STOP_MATCH.test(body)) res.end()
+				else if (RANKING.test(body)) requestRanking(getTeam(from), res)
 				else if (STOP_MATCH.test(body)) {
 					deregister(from)
 					saveRegistered()
