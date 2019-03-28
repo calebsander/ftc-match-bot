@@ -346,7 +346,7 @@ function httpRespond(req: http.IncomingMessage, res: http.ServerResponse) {
 		.on('end', () => {
 			try {
 				const request = querystring.parse(Buffer.concat(chunks).toString()) as TwilioRequest
-				console.log(request)
+				console.log(`${new Date} ${JSON.stringify(request)}`)
 				res.setHeader('Content-Type', 'text/plain; charset=UTF-8')
 				if (request.NumMedia !== '0') return res.end('This is an SMS-only service')
 				const {Body: body, From: from} = request
